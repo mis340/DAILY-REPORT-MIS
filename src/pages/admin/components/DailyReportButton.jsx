@@ -39,6 +39,24 @@ const DailyReportButton = ({ dataSheetRows }) => {
         const scriptUrl = String(row[25] || "").trim();
         const plannedRef = parseSheetRef(row[7]);
         const spreadsheetId = String(row[5] || "").trim();
+
+        // DEBUG: Log every PMIS row to diagnose why it may be skipped
+        if (groupName.toLowerCase().includes("purchase")) {
+          console.log(`[DEBUG PMIS row ${idx}]`, {
+            groupName,
+            col5_spreadsheetId: row[5],
+            col6_nameRef: row[6],
+            col7_plannedRef: row[7],
+            col8_actualRef: row[8],
+            col25_scriptUrl: row[25],
+            col26_taskNameRef: row[26],
+            col4_personName: row[4],
+            col28_stageName: row[28],
+            scriptUrl_resolved: scriptUrl,
+            plannedRef_resolved: plannedRef,
+          });
+        }
+
         if (!scriptUrl || !plannedRef) return;
 
         const key = `${scriptUrl}|${plannedRef.sheetName}|${spreadsheetId}`;
@@ -47,6 +65,10 @@ const DailyReportButton = ({ dataSheetRows }) => {
         }
         sheetGroups[key].taskIndices.push(idx);
       });
+
+      // DEBUG: Show final sheetGroups summary
+      console.log("[DEBUG] sheetGroups keys:", Object.keys(sheetGroups));
+      console.log("[DEBUG] modules list:", Object.keys(modulesMap));
 
       const parseDate = (val) => {
         if (!val) return null;
@@ -155,28 +177,22 @@ const DailyReportButton = ({ dataSheetRows }) => {
         return String(val);
       };
 
-      // #3 Fix: Skip groups where every task has zero target, zero pending, and zero today tasks.
-      // This avoids unnecessary API calls for completely inactive modules.
-      const activeSheetGroups = Object.values(sheetGroups).filter(group =>
-        group.taskIndices.some(idx => {
-          const row = dataSheetRows[idx];
-          return (
-            parseInt(row[10]) > 0 || // Target
-            parseInt(row[14]) > 0 || // All Pending Till Date
-            parseInt(row[15]) > 0 || // Today Task
-            parseInt(row[18]) > 0    // Actual Achievement (catches completed-today)
-          );
-        })
-      );
+      // Fetch all sheet groups — do NOT pre-filter by Data sheet summary columns
+      // (columns 10/14/15/18) because those may be 0 for modules like
+      // "Purchase FMS (Without PO)" even when the actual source sheet has tasks today.
+      const activeSheetGroups = Object.values(sheetGroups);
 
       await Promise.all(activeSheetGroups.map(async (group) => {
         try {
-          // Always use the global Apps Script URL directly with spreadsheetId.
-          // Department-specific URLs (group.scriptUrl) are CORS-blocked from localhost
-          // and from deployed origins unless explicitly redeployed with "Anyone" access.
-          const urlsToTry = [import.meta.env.VITE_APPS_SCRIPT_URL]
-            .map(u => String(u || "").trim())
-            .filter(u => u.startsWith("http"));
+          const checklistSheetId = String(import.meta.env.VITE_CHECKLIST_SHEET_ID || "").trim();
+          const checklistScriptUrl = String(import.meta.env.VITE_CHECKLIST_SCRIPT_URL || "").trim();
+          const isChecklistSheet = checklistSheetId && String(group.spreadsheetId || "").trim() === checklistSheetId;
+
+          const urlsToTry = (isChecklistSheet && checklistScriptUrl.startsWith("http"))
+            ? [checklistScriptUrl]
+            : [import.meta.env.VITE_APPS_SCRIPT_URL]
+                .map(u => String(u || "").trim())
+                .filter(u => u.startsWith("http"));
           let sheetData = null;
           let success = false;
 
@@ -188,11 +204,15 @@ const DailyReportButton = ({ dataSheetRows }) => {
                 fetchUrl += `&spreadsheetId=${encodeURIComponent(group.spreadsheetId)}`;
               }
 
+              // DEBUG: Log every fetch attempt
+              console.log(`[DEBUG FETCH] sheet="${group.sheetName}" spreadsheetId="${group.spreadsheetId}" url="${fetchUrl}"`);
+
               const res = await fetch(fetchUrl);
               if (!res.ok) {
                 throw new Error(`HTTP error ${res.status}`);
               }
               const result = await res.json();
+              console.log(`[DEBUG FETCH RESULT] sheet="${group.sheetName}" success=${result.success} rows=${Array.isArray(result.data) ? result.data.length : 'N/A'} error="${result.error || result.message || ''}"`);
               if (result.success && Array.isArray(result.data)) {
                 sheetData = result.data;
                 success = true;
@@ -225,6 +245,8 @@ const DailyReportButton = ({ dataSheetRows }) => {
             };
           });
 
+
+
           const minStartRow = Math.min(...taskConfigs.map(c => c.nameRef?.startRowIndex || 0));
 
           // #5 Fix: Pre-build a lookup map: nameColIndex → personName → config[]
@@ -238,6 +260,18 @@ const DailyReportButton = ({ dataSheetRows }) => {
             if (!personMap.has(config.personName)) personMap.set(config.personName, []);
             personMap.get(config.personName).push(config);
           });
+
+          // DEBUG: Compare expected names vs actual names in today's P-MIS rows
+          if (group.sheetName === 'P-MIS') {
+            const expectedNames = taskConfigs.map(c => c.personName);
+            console.log('[DEBUG PMIS] Expected personNames (from Data sheet):', [...new Set(expectedNames)].join(' | '));
+
+            const todayISO = new Date().toISOString().slice(0, 10); // "2026-05-23"
+            const todayRows = sheetData.slice(2).filter(r => r[4] && String(r[4]).startsWith(todayISO));
+            const namesInTodayRows = [...new Set(todayRows.map(r => String(r[0] || '').trim()))];
+            console.log(`[DEBUG PMIS] P-MIS rows with today (${todayISO}): ${todayRows.length} | unique names:`, namesInTodayRows.join(' | '));
+            console.log('[DEBUG PMIS] nameColMap colIndex:', [...nameColMap.keys()], '| plannedColIndex:', taskConfigs[0]?.plannedRef?.colIndex, '| startRowIndex:', taskConfigs[0]?.nameRef?.startRowIndex);
+          }
 
           // Track pushed entries to avoid duplicates
           const seenKeys = new Set();
@@ -269,6 +303,11 @@ const DailyReportButton = ({ dataSheetRows }) => {
                   const isCompletedToday = aDateAtMidnight && aDateAtMidnight.getTime() === todayAtMidnight.getTime();
                   const isPlannedToday = pDateAtMidnight && pDateAtMidnight.getTime() === todayAtMidnight.getTime();
                   const isPastPending = !aDate && pDateAtMidnight && pDateAtMidnight.getTime() < todayAtMidnight.getTime();
+
+                  // DEBUG: Inspect rows 67, 68, 69 which we know are May 23 tasks in the sheet
+                  if (absoluteIdx >= 67 && absoluteIdx <= 69 && rowPerson === 'meghraj sahu') {
+                    console.log(`[DEBUG ROW ${absoluteIdx + 1}] planRaw=${plannedVal} => actRaw=${actualVal} | pDate=${pDate?.toISOString()} | aDate=${aDate?.toISOString()} | isPlanToday=${isPlannedToday} | pDateAtMid=${pDateAtMidnight?.getTime()} | todayMid=${todayAtMidnight.getTime()}`);
+                  }
 
                   if (isCompletedToday || isPlannedToday || isPastPending) {
                     const dedupKey = `${config.groupName}|${rowPerson}|${absoluteIdx}`;
@@ -305,6 +344,10 @@ const DailyReportButton = ({ dataSheetRows }) => {
           console.error("Error fetching data for PDF:", group.sheetName, e);
         }
       }));
+
+      // DEBUG: Verify final allData for PMIS
+      console.log("[DEBUG FINAL ALLDATA] Purchase FMS (Without PO):", allData['Purchase FMS (Without PO)']);
+      console.log("[DEBUG FINAL ALLDATA] todayDate logic:", { todayStr, todayAtMidnight });
 
       // Generate PDF
       // #4 Fix: Yield the event loop before the CPU-heavy PDF render so the

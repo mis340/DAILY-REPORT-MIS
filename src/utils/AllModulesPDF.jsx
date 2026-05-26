@@ -328,15 +328,9 @@ const AllModulesPDF = ({ modules = [], allData = {}, logoPath }) => {
               const modReports = allData[mod.id] || [];
               const todayReports = modReports.filter(r => {
                 const pDate = getTaskDate(r.planned);
-                const aDate = getTaskDate(r.actual);
-                const isPlannedToday = pDate && todayDate && pDate.getTime() === todayDate.getTime();
-                const isCompletedToday = aDate && todayDate && aDate.getTime() === todayDate.getTime();
-                return isPlannedToday || isCompletedToday;
+                return pDate && todayDate && pDate.getTime() === todayDate.getTime();
               });
-              const modCompleted = todayReports.filter(r => {
-                const aDate = getTaskDate(r.actual);
-                return aDate && todayDate && aDate.getTime() === todayDate.getTime();
-              }).length;
+              const modCompleted = todayReports.filter(r => r.actual && r.actual.trim() !== '').length;
 
               const modTotalPending = modReports.filter(r => {
                 const pDate = getTaskDate(r.planned);
@@ -370,16 +364,10 @@ const AllModulesPDF = ({ modules = [], allData = {}, logoPath }) => {
         // Filter to only today's tasks for the table and completed/current pending cards
         const todayReports = reports.filter(r => {
           const pDate = getTaskDate(r.planned);
-          const aDate = getTaskDate(r.actual);
-          const isPlannedToday = pDate && todayDate && pDate.getTime() === todayDate.getTime();
-          const isCompletedToday = aDate && todayDate && aDate.getTime() === todayDate.getTime();
-          return isPlannedToday || isCompletedToday;
+          return pDate && todayDate && pDate.getTime() === todayDate.getTime();
         });
 
-        const completedCount = todayReports.filter(r => {
-          const aDate = getTaskDate(r.actual);
-          return aDate && todayDate && aDate.getTime() === todayDate.getTime();
-        }).length;
+        const completedCount = todayReports.filter(r => r.actual && r.actual.trim() !== '').length;
 
         const currentPendingCount = todayReports.filter(r => {
           const pDate = getTaskDate(r.planned);
