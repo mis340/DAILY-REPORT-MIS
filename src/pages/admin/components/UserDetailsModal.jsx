@@ -283,8 +283,8 @@ const UserDetailsModal = ({
                     <div class="report-container">
                         <div class="report-header">
                             <div class="brand">
-                                <h1 class="brand-name">ACEMARK</h1>
-                                <span class="brand-sub">STATIONERS & SYSTEMS</span>
+                                <h1 class="brand-name">PROTECHSHINE</h1>
+                                
                             </div>
                             <div class="report-title-box">
                                 <h2 class="report-title">Employee Performance Audit</h2>
@@ -326,7 +326,7 @@ const UserDetailsModal = ({
                                 <tr>
                                     <th>FMS & TASK DESCRIPTION</th>
                                     <th class="num-col">TARGET</th>
-                                    <th class="num-col">ACTUAL</th>
+                                    <th class="num-col">Actual  Work Done</th>
                                     <th class="num-col">DONE %</th>
                                     <th class="num-col">LATE %</th>
                                     <th class="num-col red-header">PLANNED NOT DONE</th>
