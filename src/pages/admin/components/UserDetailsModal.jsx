@@ -302,10 +302,7 @@ const UserDetailsModal = ({
                         </div>
 
                         <div class="stats-grid">
-                            <div class="stat-item">
-                                <span class="stat-label">Performance Score</span>
-                                <span class="stat-value highlight">${selectedUserDetails.score || 0}%</span>
-                            </div>
+                            
                             <div class="stat-item">
                                 <span class="stat-label">Weekly Done</span>
                                 <span class="stat-value">${formatPercent(selectedUserDetails.weeklyWorkDone)}</span>
