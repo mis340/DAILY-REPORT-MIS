@@ -301,7 +301,7 @@ const UserDetailsModal = ({
                             </div>
                         </div>
 
-                        <div class="stats-grid">
+                        <div class="flex gap-4 flex-wrap">
                             
                             <div class="stat-item">
                                 <span class="stat-label">Weekly Done</span>
